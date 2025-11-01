@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto-Blur Prototype</title>
+    <!-- 1. Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Lucide icons for UI (Changed from lucide-dev to lucide) -->
+    <script src="https://unpkg.com/lucide"></script>
+    <style>
+        /* Using Inter font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom styles for file input */
+        input[type="file"]::file-selector-button {
+            @apply bg-indigo-600 text-white font-semibold rounded-md p-2 hover:bg-indigo-500 cursor-pointer transition-colors;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 min-h-screen p-4 md:p-8">
+
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-3xl font-bold text-white mb-2">Crypto-Blur Prototype</h1>
+        <p class="text-lg text-gray-400 mb-6">Demonstrating the "Hybrid Approach" with "Envelope Encryption" on the *entire* image.</p>
+
+        <!-- Step 1: Controls -->
+        <div class="bg-gray-800 p-4 rounded-lg shadow-lg mb-6 flex flex-col md:flex-row md:items-center gap-4">
+            <!-- File Uploader -->
+            <div class="flex-1">
+                <label for="imageUploader" class="block text-sm font-medium text-gray-300 mb-1">1. Upload Image</label>
+                <input type="file" id="imageUploader" accept="image/*" class="w-full text-sm text-gray-300 file:mr-4 file:border-0 file:outline-none">
+            </div>
+            
+            <!-- Encrypt Button (Server Action) -->
+            <button id="encryptButton" disabled class="flex-1 w-full md:w-auto bg-blue-600 text-white font-semibold py-2 px-4 rounded-md shadow-md hover:bg-blue-500 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2">
+                <i data-lucide="lock"></i>
+                <span>2. Encrypt & Save ("Server")</span>
+            </button>
+
+            <!-- Decrypt Button (Client Action) -->
+            <button id="decryptButton" disabled class="flex-1 w-full md:w-auto bg-green-600 text-white font-semibold py-2 px-4 rounded-md shadow-md hover:bg-green-500 disabled:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2">
+                <i data-lucide="key"></i>
+                <span>3. Request & Decrypt ("Client")</span>
+            </button>
+        </div>
+
+        <!-- NEW: Metrics Display -->
+        <div class="bg-gray-800 p-4 rounded-lg shadow-lg mb-6">
+            <h2 class="text-xl font-semibold text-white mb-3 flex items-center gap-2"><i data-lucide="gauge"></i>Metrics</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div>
+                    <span class="block text-sm font-medium text-gray-400">Encrypt Time</span>
+                    <span id="metric-encrypt-time" class="text-xl font-semibold text-blue-400">- ms</span>
+                </div>
+                <div>
+                    <span class="block text-sm font-medium text-gray-400">Decrypt Time</span>
+                    <span id="metric-decrypt-time" class="text-xl font-semibold text-green-400">- ms</span>
+                </div>
+                <div>
+                    <span class="block text-sm font-medium text-gray-400">Original Size</span>
+                    <span id="metric-original-size" class="text-xl font-semibold text-gray-300">- KB</span>
+                </div>
+                <div>
+                    <span class="block text-sm font-medium text-gray-400">New File Size</span>
+                    <span id="metric-total-size" class="text-xl font-semibold text-gray-300">- KB</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center mt-4 border-t border-gray-700 pt-4">
+                <div class="md:col-start-2">
+                    <span class="block text-sm font-medium text-gray-500">Blurred Img Size</span>
+                    <span id="metric-blurred-size" class="text-lg font-medium text-gray-400">- KB</span>
+                </div>
+                <div class="md:col-start-3">
+                    <span class="block text-sm font-medium text-gray-500">Encrypted Data Size</span>
+                    <span id="metric-metadata-size" class="text-lg font-medium text-gray-400">- KB</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2: Log Output -->
+        <div class="bg-gray-800 p-4 rounded-lg shadow-lg mb-6">
+            <h2 class="text-xl font-semibold text-white mb-2 flex items-center gap-2"><i data-lucide="terminal"></i>Process Log</h2>
+            <pre id="logArea" class="bg-black text-green-400 p-4 rounded-md h-64 overflow-y-auto text-sm font-mono whitespace-pre-wrap"></pre>
+        </div>
+
+        <!-- Step 3: Visual Output -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Left Side: Public/Blurred View -->
+            <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
+                <h2 class="text-xl font-semibold text-white mb-4 text-center">Blurred "Public" View</h2>
+                <p class="text-sm text-gray-400 text-center mb-4">This is the `image.jpg` any user sees. The data is visually blurred.</p>
+                <canvas id="blurredCanvas" class="w-full h-auto rounded-md bg-gray-700"></canvas>
+            </div>
+            
+            <!-- Right Side: Private/Decrypted View -->
+            <div class="bg-gray-800 p-4 rounded-lg shadow-lg">
+                <h2 class="text-xl font-semibold text-white mb-4 text-center">Decrypted "Private" View</h2>
+                <p class="text-sm text-gray-400 text-center mb-4">This view is "stitched" in-memory after client-side decryption.</p>
+                <canvas id="decryptedCanvas" class="w-full h-auto rounded-md bg-gray-700"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const imageUploader = document.getElementById('imageUploader');
+        const encryptButton = document.getElementById('encryptButton');
+        const decryptButton = document.getElementById('decryptButton');
+        const blurredCanvas = document.getElementById('blurredCanvas');
+        const decryptedCanvas = document.getElementById('decryptedCanvas');
+        const logArea = document.getElementById('logArea');
+        
+        const blurredCtx = blurredCanvas.getContext('2d');
+        const decryptedCtx = decryptedCanvas.getContext('2d');
+
+        // --- Metric DOM Elements ---
+        const metricEncryptTime = document.getElementById('metric-encrypt-time');
+        const metricDecryptTime = document.getElementById('metric-decrypt-time');
+        const metricOriginalSize = document.getElementById('metric-original-size');
+        const metricTotalSize = document.getElementById('metric-total-size');
+        const metricBlurredSize = document.getElementById('metric-blurred-size');
+        const metricMetadataSize = document.getElementById('metric-metadata-size');
+
+        // --- Mock "Server-Side" Storage ---
+        // This Map simulates a database table storing the *encrypted* keys
+        // Map<ImageID, { encryptedDek, nonce }>
+        const mockKeyDatabase = new Map();
+
+        // This Map simulates the metadata chunk *inside* the image file
+        // Map<ImageID, { ciphertext, nonce }>
+        const mockEncryptedDataStore = new Map();
+
+        // --- Global State (for demo) ---
+        let originalImageData = null; // Stores the original pixel data for the "client"
+        let originalFileSize = 0; // Stores the original file size
+        const MOCK_IMAGE_ID = 'image_123';
+        let KEK; // The master Key Encryption Key
+
+        // --- Utility Functions ---
+        function log(message) {
+            console.log(message);
+            logArea.textContent = `> ${message}\n` + logArea.textContent;
+        }
+
+        function resetMetrics() {
+            metricEncryptTime.textContent = '- ms';
+            metricDecryptTime.textContent = '- ms';
+            metricOriginalSize.textContent = '- KB';
+            metricTotalSize.textContent = '- KB';
+            metricBlurredSize.textContent = '- KB';
+            metricMetadataSize.textContent = '- KB';
+        }
+
+        // --- Initialization ---
+        window.onload = async () => {
+            log("Initializing prototype...");
+            // 1. Generate the master Key Encryption Key (KEK) on "server" startup
+            // In a real system, this key is provisioned from a KMS/HSM
+            try {
+                const kekMaterial = new Uint8Array(32).fill(5); // A static, mock key material
+                KEK = await crypto.subtle.importKey(
+                    'raw', 
+                    kekMaterial, 
+                    { name: 'AES-GCM' }, 
+                    false, 
+                    ['encrypt', 'decrypt']
+                );
+                log("Mock 'Server' KEK (Master Key) initialized.");
+            } catch (e) {
+                log(`KEK Init Error: ${e.message}`);
+            }
+            
+            // 2. Initialize icons
+            // Added check to prevent error if lucide fails to load
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+                log("Lucide icons initialized.");
+            } else {
+                log("Error: Lucide script not loaded or 'lucide' object not defined.");
+            }
+        };
+
+        // --- 1. Image Upload Handling ---
+        imageUploader.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            originalFileSize = file.size; // Store original file size
+            const originalSizeKB = (originalFileSize / 1024).toFixed(2);
+            log(`Original File Size: ${originalSizeKB} KB`);
+            
+            resetMetrics(); // Reset metrics on new image
+            metricOriginalSize.textContent = `${originalSizeKB} KB`;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    log("Image loaded into memory.");
+                    
+                    // Set both canvases to the image dimensions
+                    blurredCanvas.width = decryptedCanvas.width = img.width;
+                    blurredCanvas.height = decryptedCanvas.height = img.height;
+
+                    // --- Create the "Blurred" Public View ---
+                    // This is the hybrid approach: apply a real, lossy blur filter
+                    blurredCtx.filter = 'blur(10px)';
+                    blurredCtx.drawImage(img, 0, 0, img.width, img.height);
+                    log("Created visually blurred 'public' canvas.");
+
+                    // --- Store Original Data for Decryption ---
+                    // We draw the original image to the (currently hidden) decrypted canvas
+                    // to easily get its raw pixel data.
+                    decryptedCtx.drawImage(img, 0, 0, img.width, img.height);
+                    originalImageData = decryptedCtx.getImageData(0, 0, img.width, img.height);
+                    log(`Stored original pixel data in memory (${(originalImageData.data.buffer.byteLength / 1024).toFixed(2)} KB).`);
+
+                    // Reset UI
+                    encryptButton.disabled = false;
+                    decryptButton.disabled = true;
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // --- 2. "Server" Encryption Process ---
+        encryptButton.addEventListener('click', async () => {
+            if (!originalImageData) {
+                log("Error: No image data to encrypt.");
+                return;
+            }
+
+            log("--- [Server] Starting Encryption Process ---");
+            encryptButton.disabled = true;
+            const startTime = performance.now();
+
+            try {
+                // --- Envelope Encryption Flow ---
+
+                // Step 1: Generate a new, one-time Data Encryption Key (DEK)
+                const dek = await crypto.subtle.generateKey(
+                    { name: 'AES-GCM', length: 256 },
+                    true,
+                    ['encrypt', 'decrypt']
+                );
+                log("[Server] Generated new DEK (Data Encryption Key).");
+
+                // Step 2: Get plaintext (the raw pixel buffer)
+                const plaintext = originalImageData.data.buffer; // Get the ArrayBuffer
+                
+                // Step 3: Encrypt the pixel data with the DEK
+                const nonce_data = crypto.getRandomValues(new Uint8Array(12));
+                const ciphertext = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv: nonce_data },
+                    dek,
+                    plaintext
+                );
+                log("[Server] Encrypted original pixel data with DEK.");
+
+                // Step 4: "Store" the encrypted data (simulating image metadata)
+                mockEncryptedDataStore.set(MOCK_IMAGE_ID, { ciphertext, nonce: nonce_data });
+                log("[Server] 'Stored' ciphertext in mock image metadata.");
+
+                // Step 5: Encrypt the DEK with the KEK
+                const dekRaw = await crypto.subtle.exportKey('raw', dek); // Get raw key bytes
+                const nonce_kek = crypto.getRandomValues(new Uint8Array(12));
+                const encryptedDek = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv: nonce_kek },
+                    KEK, // Using the master key
+                    dekRaw
+                );
+                log("[Server] Encrypted DEK with KEK.");
+                
+                // Step 6: "Store" the EncryptedDEK in the "database"
+                mockKeyDatabase.set(MOCK_IMAGE_ID, { encryptedDek, nonce: nonce_kek });
+                log("[Server] 'Stored' EncryptedDEK in mock database.");
+                
+                const endTime = performance.now();
+                const encryptTime = (endTime - startTime).toFixed(2);
+                log(`[Server] Encryption took: ${encryptTime} ms.`);
+                metricEncryptTime.textContent = `${encryptTime} ms`;
+
+                // --- Size Calculation ---
+                // 1. Get size of the visually blurred image data (as JPEG)
+                const blurredDataUrl = blurredCanvas.toDataURL('image/jpeg', 0.9); // 90% quality
+                const blurredImageSize = atob(blurredDataUrl.split(',')[1]).length;
+                const blurredSizeKB = (blurredImageSize / 1024).toFixed(2);
+                log(`[Server] Blurred Image Data Size: ${blurredSizeKB} KB`);
+                metricBlurredSize.textContent = `${blurredSizeKB} KB`;
+
+                // 2. Get size of the encrypted metadata
+                const metadataSize = mockEncryptedDataStore.get(MOCK_IMAGE_ID).ciphertext.byteLength;
+                const metadataSizeKB = (metadataSize / 1024).toFixed(2);
+                log(`[Server] Encrypted Metadata Size: ${metadataSizeKB} KB`);
+                metricMetadataSize.textContent = `${metadataSizeKB} KB`;
+
+                // 3. Log total estimated size
+                const totalSize = blurredImageSize + metadataSize;
+                const totalSizeKB = (totalSize / 1024).toFixed(2);
+                const originalSizeKB = (originalFileSize / 1024).toFixed(2);
+                log(`[Server] Estimated Total File Size: ${totalSizeKB} KB (vs. Original: ${originalSizeKB} KB)`);
+                metricTotalSize.textContent = `${totalSizeKB} KB`;
+
+                // --- UI Update ---
+                // Clear the "private" view to show it's "locked"
+                decryptedCtx.fillStyle = '#374151'; // gray-700
+                decryptedCtx.fillRect(0, 0, decryptedCanvas.width, decryptedCanvas.height);
+                log("--- [Server] Process Complete. Ready for client. ---");
+                decryptButton.disabled = false;
+
+            } catch (e) {
+                log(`[Server] Error: ${e.message}`);
+                encryptButton.disabled = false;
+            }
+        });
+
+        // --- 3. "Client" Decryption Process ---
+        decryptButton.addEventListener('click', async () => {
+            log("--- [Client] Requesting Decryption ---");
+            decryptButton.disabled = true;
+            const startTime = performance.now();
+
+            try {
+                // Step 1: "Client" requests the key bundle from the "server"
+                // This simulates an authenticated API call: GET /api/keys/image_123
+                log("[Client] Fetching 'Key Bundle' from server...");
+                const keyBundle = await fetchKeyBundleFromServer(MOCK_IMAGE_ID);
+                
+                if (!keyBundle) {
+                    log("[Client] Error: Could not get key bundle.");
+                    return;
+                }
+                log("[Client] Received plaintext DEK from server.");
+
+                // Step 2: "Client" reads the encrypted data from the "image metadata"
+                const { ciphertext, nonce } = mockEncryptedDataStore.get(MOCK_IMAGE_ID);
+                if (!ciphertext) {
+                    log("[Client] Error: Could not find encrypted data in 'metadata'.");
+                    return;
+                }
+                log("[Client] Loaded encrypted data from 'image metadata'.");
+
+                // Step 3: Import the received DEK
+                const dek = await crypto.subtle.importKey(
+                    'raw',
+                    keyBundle.key, // This is the raw, plaintext DEK
+                    { name: 'AES-GCM' },
+                    false,
+                    ['decrypt']
+                );
+
+                // Step 4: Decrypt the pixel data with the DEK
+                const plaintextBuffer = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: nonce },
+                    dek,
+                    ciphertext
+                );
+                log("[Client] Decryption successful!");
+                log(`[Client] Decrypted Data Size: ${(plaintextBuffer.byteLength / 1024).toFixed(2)} KB (matches original pixel buffer)`);
+
+                // Step 5: "Stitch" the decrypted data back into the canvas
+                // We create a new Uint8ClampedArray from the decrypted buffer
+                const plaintextPixels = new Uint8ClampedArray(plaintextBuffer);
+                // We create a new ImageData object
+                const newImageData = new ImageData(plaintextPixels, originalImageData.width, originalImageData.height);
+                // And we put it onto the "private" canvas
+                decryptedCtx.putImageData(newImageData, 0, 0);
+
+                const endTime = performance.now();
+                const decryptTime = (endTime - startTime).toFixed(2);
+                log(`[Client] Decryption took: ${decryptTime} ms.`);
+                metricDecryptTime.textContent = `${decryptTime} ms`;
+                
+                log("[Client] 'Stitched' original pixels into private view.");
+                log("--- [Client] Process Complete. ---");
+
+            } catch (e) {
+                log(`[Client] Decryption Error: ${e.message}. Tag mismatch?`);
+                decryptButton.disabled = false;
+            }
+        });
+
+        // --- Mock Server-Side API Function ---
+        // This function simulates the server's *internal* logic for a key request
+        async function fetchKeyBundleFromServer(imageId) {
+            log("...[Server-Internal] Received key request.");
+            
+            // 1. Get the EncryptedDEK from the "database"
+            const data = mockKeyDatabase.get(imageId);
+            if (!data) {
+                log("...[Server-Internal] Error: No key found in database.");
+                return null;
+            }
+            const { encryptedDek, nonce } = data;
+
+            try {
+                // 2. Use the master KEK to decrypt the EncryptedDEK
+                const dekRaw = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: nonce },
+                    KEK, // The master key
+                    encryptedDek
+                );
+                log("...[Server-Internal] Decrypted DEK with KEK.");
+
+                // 3. Return the *plaintext* DEK in the "key bundle"
+                // (In a real app, this response would be encrypted with the *client's* public key)
+                return {
+                    imageId: imageId,
+                    key: dekRaw // The raw, plaintext Data Encryption Key
+                };
+            } catch (e) {
+                log(`...[Server-Internal] Error decrypting DEK: ${e.message}`);
+                return null;
+            }
+        }
+
+    </script>
+</body>
+</html>
+
+
+
+
