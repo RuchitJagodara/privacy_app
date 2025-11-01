@@ -249,32 +249,41 @@
                 log("[Server] Generated new DEK (Data Encryption Key).");
 
                 // Step 2: Get plaintext (the raw pixel buffer)
-                const plaintext = originalImageData.data.buffer; // Get the ArrayBuffer
+                const plaintext = originalImageData.data.buffer; // Get the ArrayBuffer (e.g., 8MB)
+                log(`[Server] Original pixel buffer size: ${(plaintext.byteLength / 1024).toFixed(2)} KB`);
+
+                // Step 3: **NEW** - Compress the plaintext before encrypting
+                log("[Server] Compressing pixel data with GZIP...");
+                const compressedStream = new Response(plaintext).body.pipeThrough(new CompressionStream('gzip'));
+                const compressedPlaintext = await new Response(compressedStream).arrayBuffer();
+                log(`[Server] Compressed data size: ${(compressedPlaintext.byteLength / 1024).toFixed(2)} KB`);
                 
-                // Step 3: Encrypt the pixel data with the DEK
+                // Step 4: Encrypt the *compressed* data with the DEK
                 const nonce_data = crypto.getRandomValues(new Uint8Array(12));
                 const ciphertext = await crypto.subtle.encrypt(
                     { name: 'AES-GCM', iv: nonce_data },
                     dek,
-                    plaintext
+                    compressedPlaintext // Encrypting the small, compressed buffer
                 );
-                log("[Server] Encrypted original pixel data with DEK.");
+                log("[Server] Encrypted *compressed* data with DEK.");
 
-                // Step 4: "Store" the encrypted data (simulating image metadata)
+                // Step 5: "Store" the encrypted data (simulating image metadata)
                 mockEncryptedDataStore.set(MOCK_IMAGE_ID, { ciphertext, nonce: nonce_data });
                 log("[Server] 'Stored' ciphertext in mock image metadata.");
 
-                // Step 5: Encrypt the DEK with the KEK
-                const dekRaw = await crypto.subtle.exportKey('raw', dek); // Get raw key bytes
+                // Step 6: Encrypt the DEK with the KEK
                 const nonce_kek = crypto.getRandomValues(new Uint8Array(12));
+                // We need to export the DEK to encrypt it (as it's a CryptoKey object)
+                const dekRaw = await crypto.subtle.exportKey('raw', dek); 
+                
                 const encryptedDek = await crypto.subtle.encrypt(
                     { name: 'AES-GCM', iv: nonce_kek },
-                    KEK, // Using the master key
-                    dekRaw
+                    KEK, // The master key
+                    dekRaw // The raw DEK
                 );
                 log("[Server] Encrypted DEK with KEK.");
                 
-                // Step 6: "Store" the EncryptedDEK in the "database"
+                // Step 7: "Store" the EncryptedDEK in the "database"
                 mockKeyDatabase.set(MOCK_IMAGE_ID, { encryptedDek, nonce: nonce_kek });
                 log("[Server] 'Stored' EncryptedDEK in mock database.");
                 
@@ -353,17 +362,32 @@
                 );
 
                 // Step 4: Decrypt the pixel data with the DEK
-                const plaintextBuffer = await crypto.subtle.decrypt(
+                // This gives us the *compressed* data
+                const decryptedCompressedBuffer = await crypto.subtle.decrypt(
                     { name: 'AES-GCM', iv: nonce },
                     dek,
                     ciphertext
                 );
-                log("[Client] Decryption successful!");
-                log(`[Client] Decrypted Data Size: ${(plaintextBuffer.byteLength / 1024).toFixed(2)} KB (matches original pixel buffer)`);
+                log("[Client] Decryption successful! (Got compressed buffer).");
+                log(`[Client] Decrypted Compressed Size: ${(decryptedCompressedBuffer.byteLength / 1024).toFixed(2)} KB`);
 
-                // Step 5: "Stitch" the decrypted data back into the canvas
-                // We create a new Uint8ClampedArray from the decrypted buffer
+                // Step 5: **NEW** - Decompress the decrypted data
+                log("[Client] Decompressing GZIP data...");
+                const decompressedStream = new Response(decryptedCompressedBuffer).body.pipeThrough(new DecompressionStream('gzip'));
+                const plaintextBuffer = await new Response(decompressedStream).arrayBuffer();
+                log(`[Client] Decompressed data to raw pixel buffer: ${(plaintextBuffer.byteLength / 1024).toFixed(2)} KB`);
+
+                // Step 6: "Stitch" the decrypted data back into the canvas
+                // We create a new Uint8ClampedArray from the *decompressed* buffer
                 const plaintextPixels = new Uint8ClampedArray(plaintextBuffer);
+
+                // Sanity check
+                if (plaintextPixels.length !== originalImageData.data.length) {
+                    log(`[Client] Error: Decompressed data length (${plaintextPixels.length}) does not match original (${originalImageData.data.length})!`);
+                    decryptButton.disabled = false;
+                    return;
+                }
+
                 // We create a new ImageData object
                 const newImageData = new ImageData(plaintextPixels, originalImageData.width, originalImageData.height);
                 // And we put it onto the "private" canvas
@@ -420,6 +444,8 @@
     </script>
 </body>
 </html>
+
+
 
 
 
