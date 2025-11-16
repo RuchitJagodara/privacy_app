@@ -1,0 +1,95 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+backend/privacy_app.db
+
+# Uploads
+backend/uploads/
+uploads/
+*.jpg
+*.jpeg
+*.png
+*.gif
+!Face_Recognition/faces/*.jpg
+!Face_Recognition/faces/*.jpeg
+!Face_Recognition/faces/*.png
+
+# Logs
+*.log
+logs.log
+Face_Recognition/logs.log
+
+# Environment
+.env
+.env.local
+
+# Temporary files
+temp_*
+*.tmp
+
+# Encrypted test files
+photo_encrypted.jpg
+photo_decrypted_*.jpg
+photo_revealed_*.jpg
+test_*.jpg
+Aditya.jpeg
+
+# Node modules (if using any JS build tools)
+node_modules/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# pytest
+.pytest_cache/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
